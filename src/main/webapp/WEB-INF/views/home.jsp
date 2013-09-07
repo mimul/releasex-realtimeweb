@@ -14,9 +14,9 @@
     	<meta charset="utf-8">
         <title>실시간 트위터 타임라인</title>
         <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
-		<script type="text/javascript" src="${pageScope.jqueryJavascriptUrl}"></script>
+		<script type="text/javascript" src="http://code.jquery.com/jquery-1.10.2.min.js"></script>
 		<script type="text/javascript" src="${pageScope.jqueryTmplJavascriptUrl}"></script>
-		<script type="text/javascript" src="${pageScope.jqueryAtmosphereUrl}"></script>
+		<script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/jquery.atmosphere/2.0.0.RC4/jquery.atmosphere.min.js"></script>
 		<script type="text/javascript" src="${pageScope.bootstrapUrl}"></script>
 		<link rel="stylesheet" href="${pageScope.bootstrapCssUrl}"/>
 		<link rel="stylesheet" href="${pageScope.bootstrapResponsiveCssUrl}"/>
@@ -106,17 +106,6 @@
 
         <script type="text/javascript">
         	var socket = $.atmosphere;
-
-        	function randomString() {
-        		var chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXTZabcdefghiklmnopqrstuvwxyz";
-        		var string_length = 8;
-        		var randomstring = '';
-        		for (var i=0; i<string_length; i++) {
-        			var rnum = Math.floor(Math.random() * chars.length);
-        			randomstring += chars.substring(rnum,rnum+1);
-        		}
-        		return randomstring;
-        	}
         	
             function handleAtmosphere( transport ) {
                 var asyncHttpStatistics = {
@@ -137,7 +126,7 @@
                 var request = new $.atmosphere.AtmosphereRequest();
                 request.transport = transport;
 
-                request.url = "<c:url value='http://localhost:8080/releasex-realtimeweb-1.0/twitter/concurrency'/>";
+                request.url = "<c:url value='/twitter/concurrency'/>";
                 request.contentType = "application/json; charset=utf-8";
                 request.fallbackTransport = null;
 
@@ -149,14 +138,14 @@
 
                 };
                 request.onClose = function(response) {
-					closeProcess(response);
+                	console.log('socket close');
                 };
 
-                request.onOpen = function() { $.atmosphere.log('info', ['socket open']); };
-                request.onError =  function() { $.atmosphere.log('info', ['socket error']); };
-                request.onReconnect =  function() { $.atmosphere.log('info', ['socket reconnect']); };
-				//request.onClose =  function() {$.atmosphere.log('info', ['socket close']);};
-                var subSocket = socket.subscribe(request);
+                request.onOpen = function() { console.log('socket open'); };
+                request.onError =  function() { console.log('info', ['socket error']); };
+                request.onReconnect =  function() { console.log('info', ['socket reconnect']); };
+
+                socket.subscribe(request);
                 
                 function closeProcess(response) {
                 	if (response.state == "unsubscribe") {
@@ -169,9 +158,9 @@
                     asyncHttpStatistics.transportType = response.transport;
                     asyncHttpStatistics.responseState = response.responseState;
 
-                    $.atmosphere.log('info', ["response.state: " + response.state]);
-                    $.atmosphere.log('info', ["response.transport: " + response.transport]);
-                    $.atmosphere.log('info', ["response.responseBody: " + response.responseBody]);
+                    console.log("response.state: " + response.state);
+                    console.log("response.transport: " + response.transport);
+                    console.log("response.responseBody: " + response.responseBody);
                     
                     if(response.state = "messageReceived"){                
 	                	var data = response.responseBody;

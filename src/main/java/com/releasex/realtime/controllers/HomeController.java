@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import org.atmosphere.cpr.ApplicationConfig;
 import org.atmosphere.cpr.AtmosphereRequest;
 import org.atmosphere.cpr.AtmosphereResource;
 import org.atmosphere.cpr.AtmosphereResourceEvent;
@@ -39,12 +40,26 @@ import com.releasex.realtime.services.FeedService;
 public class HomeController 
 {
 	private static final Logger logger = LoggerFactory.getLogger(HomeController.class);
-	private final Map<String, Future<?>> futures = new ConcurrentHashMap<String, Future<?>>();
+	private static final Map<String, Future<?>> futures = new ConcurrentHashMap<String, Future<?>>();
 	private long sinceId = 0;
 
 	@Autowired
 	private FeedService feedService;
 
+ 	private String getUUID(AtmosphereResource resource)
+ 	{
+ 		String uuid = "0";
+		Object trackingId = resource.getRequest().getHeader(HeaderConfig.X_ATMOSPHERE_TRACKING_ID);
+		if (trackingId != null && !"0".equals(trackingId)) {
+			uuid = trackingId.toString();
+		} else {
+			trackingId = resource.getRequest().getAttribute(ApplicationConfig.SUSPENDED_ATMOSPHERE_RESOURCE_UUID);
+			if (trackingId != null && !"0".equals(trackingId))
+				uuid = trackingId.toString();
+		}
+		return uuid;
+ 	}
+ 	
 	@RequestMapping(value = "/", method = RequestMethod.GET)
 	public String home(Locale locale, Model model) {
 		logger.info("Welcome home! the client locale is " + locale.toString());
@@ -58,10 +73,10 @@ public class HomeController
 		try {
 			event.suspend();
 			final AtmosphereRequest request = event.getRequest();
-			final String username = request.getSession().getId();
-			request.getSession().setAttribute("broadcasterId", username);
-			logger.info("username : {}", username);
-			final Broadcaster broadcaster = BroadcasterFactory.getDefault().lookup(username, true);
+			final String trackId = getUUID(event);
+			if (logger.isInfoEnabled())
+				logger.info("trackId : {}", trackId);
+			final Broadcaster broadcaster = BroadcasterFactory.getDefault().lookup(trackId, true);
 			broadcaster.setScope(Broadcaster.SCOPE.APPLICATION);
 			broadcaster.setBroadcasterLifeCyclePolicy(BroadcasterLifeCyclePolicy.EMPTY_DESTROY);
 			broadcaster.addBroadcasterLifeCyclePolicyListener(new BroadcasterLifeCyclePolicyListener() {
@@ -79,47 +94,48 @@ public class HomeController
 				}
 			});
 			event.addEventListener(new AtmosphereResourceEventListener() {
+				public void onPreSuspend(AtmosphereResourceEvent event) {
+					logger.info("{} calls onPreSuspend", trackId);
+				}
+				
 				@Override
-				public void onSuspend(final AtmosphereResourceEvent event) {
-					logger.info("{} calls onSuspend", username);
+				public void onSuspend(AtmosphereResourceEvent event) {
+					logger.info("{} calls onSuspend", trackId);
 				}
 
 				@Override
-				public void onResume(final AtmosphereResourceEvent event) {
-					logger.info("{} calls onResume", username);
+				public void onResume(AtmosphereResourceEvent event) {
+					logger.info("{} calls onResume", trackId);
 				}
 
 				@Override
-				public void onDisconnect(final AtmosphereResourceEvent event) {
+				public void onDisconnect(AtmosphereResourceEvent event) {
 					String transport = event.getResource().getRequest()
 							.getHeader(HeaderConfig.X_ATMOSPHERE_TRANSPORT);
-					Future<?> future = futures.get(username);
-					if (event != null && event.broadcaster() != null)
-						event.broadcaster().resumeAll();
+					Future<?> future = futures.get(trackId);
 					if (future != null) {
 						future.cancel(true);
 					}
 
-					logger.info("{} calls onDisconnect, {}", username,
-							transport);
+					logger.info("{} calls onDisconnect, {}", trackId, transport);
 				}
 
 				@Override
-				public void onBroadcast(final AtmosphereResourceEvent event) {
+				public void onBroadcast(AtmosphereResourceEvent event) {
 					String transport = event.getResource().getRequest()
 							.getHeader(HeaderConfig.X_ATMOSPHERE_TRANSPORT);
-					logger.info("{} calls onBroadcast, {}", username, transport);
+					logger.info("{} calls onBroadcast, {}", trackId, transport);
 				}
 
 				@Override
-				public void onThrowable(final AtmosphereResourceEvent event) {
-					logger.info("{} calls onThrowable", username);
+				public void onThrowable(AtmosphereResourceEvent event) {
+					logger.info("{} calls onThrowable", trackId);
 				}
 			});
 			broadcaster.addAtmosphereResource(event);
 			Future<?> future = broadcaster.scheduleFixedBroadcast(
-					executeApplication(username), 10, TimeUnit.SECONDS);
-			futures.put(username, future);
+					executeApplication(), 10, TimeUnit.SECONDS);
+			futures.put(trackId, future);
 		} catch (Exception e) {
 			e.printStackTrace();
 		} finally {
@@ -127,11 +143,12 @@ public class HomeController
 		}
 	}
 
-	private Callable<String> executeApplication(final String username) {
+	private Callable<String> executeApplication() {
 		final ObjectMapper objectMapper = new ObjectMapper();
 		return new Callable<String>() {
 			@Override
 			public String call() throws Exception {
+				String result = null;
 				try {
 					final TwitterTemplate twitterTemplate = new TwitterTemplate(
 							"p1pOLWX6XuZrhmOJ3znRg",
@@ -149,11 +166,11 @@ public class HomeController
 							tweet.getCreatedAt(), tweet.getText(), tweet.getFromUser(), tweet.getProfileImageUrl()));
 					}
 
-					return objectMapper.writeValueAsString(twitterMessages);
+					result = objectMapper.writeValueAsString(twitterMessages);
 				} catch (Exception e) {
 					logger.error("", e);
 				}
-				return null;
+				return result;
 			}
 		};
 	}
